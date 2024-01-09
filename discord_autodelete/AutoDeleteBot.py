@@ -212,7 +212,8 @@ class AutoDeleteBot(commands.Bot):
                             )
                             # This compromises the validity of this operation.
                             # The messages in the database shouldn't be cleared, so let it interrupt the function.
-                        raise result
+                        self.logger.error(result)
+                        continue
                 if attempt_count > 0:
                     self.logger.debug(
                         f"Cleared {attempt_count - failure_count} messages"
