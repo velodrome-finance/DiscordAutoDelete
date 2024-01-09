@@ -133,92 +133,34 @@ class AutoDeleteBot(commands.Bot):
         except discord.HTTPException:
             return False
 
+    def deletable(self, message: discord.PartialMessage):
+        return not message.pinned
+
     async def clear_expired_messages(self) -> None:
         async with self.delete_lock:
             async with self.message_registry:
+                for channel_id in self.message_registry.channels:
+                    try:
+                        channel = self.get_channel(channel_id) or await self.fetch_or_deregister_channel(channel_id)
+                        cconfig = self.message_registry.channels.get(channel.id)
+                    except discord.NotFound:
+                        continue
+
+                    before_date = discord.utils.utcnow() - cconfig.duration
+
+                    try:
+                        deleted = await channel.purge(
+                            check=self.deletable,
+                            before=before_date,
+                            reason='AutoDeleteBot'
+                        )
+                    except Exception as err:
+                        self.logger.error(err)
+
                 # Assume by default that pending work will be finished by the end of this action.
                 # If this assumption is true, this will find no more messages on its next check, and pause
                 # until more messages become available. If it is false, then it won't need to check this anyway.
                 self.work_pending.clear()
-                messages = await self.message_registry.pop_expired_messages()
-                messages_by_channel = groupby(messages, lambda m: m.channel)
-
-                skipped_count = 0
-                deletion_reason = "Time-based autodelete"
-                deletions = []
-                for partial_channel, message_group_iter in messages_by_channel:
-                    # Dynamic deletion strategy based on bulk message delete limitations.
-                    partial_channel: discord.PartialMessageable
-                    message_group: Sequence[discord.PartialMessage] = tuple(message_group_iter)
-                    if self.protect_pins:
-                        unfiltered_message_count = len(message_group)
-                        if unfiltered_message_count > 1:
-                            # Retrieve a list of pins to compare against in a single request,
-                            # rather than fetching each message individually and checking its pinned status.
-                            try:
-                                channel_pins = {m.id for m in await partial_channel.pins()}
-                                message_group = tuple(m for m in message_group if m.id not in channel_pins)
-                            except discord.HTTPException:
-                                pass
-                        elif message_group and self.is_protected_message(message_group[0]):
-                            message_group = ()
-                        if not message_group:
-                            continue
-                        skipped_count += unfiltered_message_count - len(message_group)
-                    time_limit = discord.utils.utcnow() - datetime.timedelta(days=13.8)  # 14 days, plus margin of error
-                    bulk_deletable = tuple(m for m in message_group if m.created_at > time_limit)
-                    non_bulk_deletable = (m for m in message_group if m.created_at <= time_limit)
-
-                    if len(bulk_deletable) == 1:
-                        deletions.append(bulk_deletable[0].delete())
-                    elif bulk_deletable:
-                        # 2+ messages
-                        try:
-                            channel = self.get_channel(partial_channel.id) or await self.fetch_or_deregister_channel(
-                                partial_channel.id
-                            )
-                        except discord.HTTPException:
-                            continue
-                        for start in range(0, len(bulk_deletable), 100):
-                            # Discord limits bulk deletions to 100 messages per API call.
-                            end = start + 100
-                            chunk = bulk_deletable[start:end]
-                            deletions.append(channel.delete_messages(chunk, reason=deletion_reason))
-
-                    for m in non_bulk_deletable:
-                        # Messages older than 14 days cannot be bulk-deleted.
-                        deletions.append(m.delete())
-
-                attempt_count = len(messages) - skipped_count
-                failure_count = 0
-                for message, result in zip(messages, await asyncio.gather(*deletions, return_exceptions=True)):
-                    if isinstance(result, Exception):
-                        failure_count += 1
-                        message_identifier = f"{message.channel.id}-{message.id}"
-                        if isinstance(result, discord.Forbidden):
-                            # Can't do anything, but permissions could be different in other channels, so continue.
-                            self.logger.warning(
-                                f"Failed to delete message {message_identifier} due to insufficient permissions."
-                            )
-                            continue
-                        elif isinstance(result, discord.NotFound):
-                            # Most likely already deleted
-                            self.logger.info(f"Failed to delete message {message_identifier} as it was not found.")
-                            continue
-                        elif isinstance(result, discord.HTTPException):
-                            self.logger.warning(
-                                f"Failed to delete message {message_identifier} due to"
-                                f" HTTP error {result.status}: {result.text}"
-                            )
-                            # This compromises the validity of this operation.
-                            # The messages in the database shouldn't be cleared, so let it interrupt the function.
-                        self.logger.error(result)
-                        continue
-                if attempt_count > 0:
-                    self.logger.debug(
-                        f"Cleared {attempt_count - failure_count} messages"
-                        + (f" ({failure_count} failed)." if failure_count else ".")
-                    )
 
     @tasks.loop(reconnect=True)
     async def monitor_expired_messages(self):
