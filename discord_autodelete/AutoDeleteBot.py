@@ -145,14 +145,16 @@ class AutoDeleteBot(commands.Bot):
                         continue
 
                     before_date = discord.utils.utcnow() - cconfig.duration
+                    limit = int(os.getenv("PURGE_LIMIT", "100"))
 
-                    self.logger.info(f"[{channel.guild} / {channel}] start purge ({cconfig.duration}); before date is {before_date}")
+                    self.logger.info(f"[{channel.guild} / {channel}] start purge ({cconfig.duration}) with limit {limit}; before date is {before_date}")
 
                     try:
                         deleted = await channel.purge(
                             check=self.deletable,
                             before=before_date,
-                            reason='AutoDeleteBot'
+                            reason='AutoDeleteBot',
+                            limit=limit
                         )
 
                         self.logger.info(f"[{channel.guild} / {channel}] purged {len(deleted)} messages")
