@@ -4,10 +4,10 @@ import os
 import sys
 import asyncio
 import argparse
+import logging
 
 from .AutoDeleteBot import AutoDeleteBot
 from .commands import AutoDeleteChannelControl
-
 
 async def async_main():
     parser = argparse.ArgumentParser(
@@ -100,6 +100,10 @@ async def async_main():
             file=sys.stderr,
         )
         sys.exit(1)
+
+    logging.basicConfig(
+        level=os.getenv('LOGLEVEL', 'WARNING').upper()
+    )
 
     try:
         # noinspection PyPackageRequirements,PyUnresolvedReferences

@@ -37,7 +37,6 @@ class AutoDeleteBot(commands.Bot):
     def _setup_logger(self) -> None:
         # Bot logs
         self.logger = logging.getLogger("AutoDelete")
-        self.logger.setLevel(logging.WARNING)
         self.logger.propagate = False
 
         local = os.getenv("LOCAL")
@@ -60,7 +59,6 @@ class AutoDeleteBot(commands.Bot):
 
         # discord.py logs
         self.discord_logger = logging.getLogger("discord")
-        self.discord_logger.setLevel(logging.WARNING)
         self.discord_logger.addHandler(handler)
 
     async def __aenter__(self):
@@ -148,12 +146,16 @@ class AutoDeleteBot(commands.Bot):
 
                     before_date = discord.utils.utcnow() - cconfig.duration
 
+                    self.logger.info(f"preparing purge for {cconfig.duration} seconds; before date is {before_date}")
+
                     try:
                         deleted = await channel.purge(
                             check=self.deletable,
                             before=before_date,
                             reason='AutoDeleteBot'
                         )
+
+                        self.logger.info(f"purged {len(deleted)} messages")
                     except Exception as err:
                         self.logger.error(err)
 
@@ -169,7 +171,7 @@ class AutoDeleteBot(commands.Bot):
         while True:
             await self.clear_expired_messages()
             self.logger.debug("Finished clearing messages, beginning wait.")
-            await self._wait_until_needed()
+            await self._wait_until_needed() 
             self.logger.debug("Finished wait, beginning clearing messages.")
 
     async def _shorten_sleep(self, dt: datetime.datetime) -> None:
