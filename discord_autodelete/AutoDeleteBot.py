@@ -146,7 +146,7 @@ class AutoDeleteBot(commands.Bot):
 
                     before_date = discord.utils.utcnow() - cconfig.duration
 
-                    self.logger.info(f"preparing purge for {cconfig.duration} seconds; before date is {before_date}")
+                    self.logger.info(f"[{channel.guild} / {channel}] start purge ({cconfig.duration}); before date is {before_date}")
 
                     try:
                         deleted = await channel.purge(
@@ -155,9 +155,9 @@ class AutoDeleteBot(commands.Bot):
                             reason='AutoDeleteBot'
                         )
 
-                        self.logger.info(f"purged {len(deleted)} messages")
+                        self.logger.info(f"[{channel.guild} / {channel}] purged {len(deleted)} messages")
                     except Exception as err:
-                        self.logger.error(err)
+                        self.logger.error(f"[{channel.guild} / {channel}] purge failed with {err}")
 
                 # Assume by default that pending work will be finished by the end of this action.
                 # If this assumption is true, this will find no more messages on its next check, and pause
